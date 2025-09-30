@@ -29,6 +29,12 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
     
+    - name: Setup Flutter SDK
+      uses: flutter-actions/setup-flutter@v3
+      with:
+        channel: stable
+        version: latest
+    
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
