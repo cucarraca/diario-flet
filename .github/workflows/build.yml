@@ -43,10 +43,7 @@ jobs:
         flet build apk \
           --project "Diario Personal" \
           --description "Una aplicación de diario personal" \
-          --author "Diario Flet Team" \
-          --org "com.diarioflet.app" \
-          --version "1.0.0" \
-          --build-number ${{ github.run_number }} \
+          --org com.diarioflet.app \
           --verbose
     
     - name: List build output
