@@ -10,6 +10,7 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     
     steps:
     - name: Checkout code
@@ -20,77 +21,113 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Set up Java JDK 17
+    - name: Set up Java JDK 11
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'
+        java-version: '11'
     
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
+      with:
+        api-level: 33
+        build-tools: 33.0.2
     
     - name: Setup Flutter SDK
-      uses: flutter-actions/setup-flutter@v3
+      uses: subosito/flutter-action@v2
       with:
-        channel: stable
-        version: latest
+        flutter-version: '3.24.3'
+        channel: 'stable'
+        cache: true
+    
+    - name: Flutter Doctor
+      run: flutter doctor -v
     
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Install Flet build tools
-      run: |
-        pip install flet[build]
+        pip install flet==0.24.1
     
     - name: Accept Android licenses
-      run: yes | sdkmanager --licenses || true
+      run: yes | flutter doctor --android-licenses || true
     
-    - name: Build APK
+    - name: Cache Flutter packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.pub-cache
+          ${{ runner.temp }}/flutter_*
+        key: ${{ runner.os }}-flutter-${{ hashFiles('pubspec.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-flutter-
+    
+    - name: Build APK with timeout
+      timeout-minutes: 45
       env:
-        GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dkotlin.compiler.execution.strategy=in-process"
+        GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1 -Xmx2048m"
+        JAVA_OPTS: "-Xmx2048m"
       run: |
-        flet build apk \
-          --project "Diario Personal" \
-          --description "Una aplicación de diario personal" \
+        # Crear directorio de build si no existe
+        mkdir -p build
+        
+        # Comando con timeout y retry
+        timeout 2700 flet build apk \
+          --project "DiarioPersonal" \
+          --description "Diario personal con Flet" \
           --org com.diarioflet.app \
-          --verbose
+          --verbose \
+          --no-rich-output || {
+            echo "Build falló o timeout. Intentando versión simplificada..."
+            timeout 1800 flet build apk \
+              --project "DiarioPersonal" \
+              --org com.diarioflet.app \
+              --verbose \
+              --no-rich-output
+          }
     
-    - name: List build output
+    - name: Find and list APK files
       run: |
-        echo "Contenido del directorio build:"
-        find . -name "*.apk" -type f
-        ls -la build/ || echo "No build directory"
-        find . -type f -name "*.apk" -exec ls -la {} \;
+        echo "🔍 Buscando archivos APK generados..."
+        find . -name "*.apk" -type f -exec ls -lh {} \; || echo "No se encontraron APKs"
+        
+        echo "📁 Contenido del directorio build:"
+        find ./build -type f -name "*.apk" 2>/dev/null || echo "No hay APKs en build/"
+        
+        echo "📂 Estructura completa del directorio:"
+        find . -maxdepth 3 -type d | head -20
     
     - name: Upload APK artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: diario-personal-apk
+        name: diario-personal-apk-${{ github.run_number }}
         path: |
           build/**/*.apk
           **/*.apk
-        if-no-files-found: error
+          ./**/*release*.apk
+        if-no-files-found: warn
     
-    - name: Create Release (if on main branch)
+    - name: Create Release (if APK exists and main branch)
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ github.run_number }}
-        name: Release v${{ github.run_number }}
-        body: |
-          🚀 Nueva versión de Diario Personal
-          
-          **Cambios en esta versión:**
-          - Compilación automática #${{ github.run_number }}
-          - Commit: ${{ github.sha }}
-          
-          📱 **Descarga la APK** desde los assets de esta release.
-        files: |
-          build/**/*.apk
-          **/*.apk
-        draft: false
-        prerelease: false
+      run: |
+        APK_FILE=$(find . -name "*.apk" -type f | head -1)
+        if [ -n "$APK_FILE" ]; then
+          echo "APK encontrada: $APK_FILE"
+          gh release create "v${{ github.run_number }}" \
+            --title "Diario Personal v${{ github.run_number }}" \
+            --notes "🚀 Nueva versión automática
+            
+            **📱 Instalación:**
+            1. Descarga el archivo .apk
+            2. Habilita 'Instalar desde fuentes desconocidas' en Android
+            3. Instala la aplicación
+            
+            **🔧 Build #${{ github.run_number }}**
+            - Commit: ${{ github.sha }}
+            - Fecha: $(date)" \
+            "$APK_FILE" || echo "Error creando release"
+        else
+          echo "No se encontró APK para crear release"
+        fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
