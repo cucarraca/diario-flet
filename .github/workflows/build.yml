@@ -10,7 +10,7 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     
     steps:
     - name: Checkout code
@@ -59,28 +59,21 @@ jobs:
           ${{ runner.os }}-flutter-
     
     - name: Build APK with timeout
-      timeout-minutes: 45
+      timeout-minutes: 75
       env:
-        GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1 -Xmx2048m"
-        JAVA_OPTS: "-Xmx2048m"
+        GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1 -Xmx4g"
+        JAVA_OPTS: "-Xmx4g"
       run: |
         # Crear directorio de build si no existe
         mkdir -p build
         
-        # Comando con timeout y retry
-        timeout 2700 flet build apk \
+        # Comando con timeout extendido
+        timeout 4200 flet build apk \
           --project "DiarioPersonal" \
           --description "Diario personal con Flet" \
           --org com.diarioflet.app \
           --verbose \
-          --no-rich-output || {
-            echo "Build falló o timeout. Intentando versión simplificada..."
-            timeout 1800 flet build apk \
-              --project "DiarioPersonal" \
-              --org com.diarioflet.app \
-              --verbose \
-              --no-rich-output
-          }
+          --no-rich-output
     
     - name: Find and list APK files
       run: |
