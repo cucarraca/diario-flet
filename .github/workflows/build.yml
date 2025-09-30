@@ -44,7 +44,12 @@ jobs:
       run: |
         pip install flet[build]
     
+    - name: Accept Android licenses
+      run: yes | sdkmanager --licenses || true
+    
     - name: Build APK
+      env:
+        GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dkotlin.compiler.execution.strategy=in-process"
       run: |
         flet build apk \
           --project "Diario Personal" \
